@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { renderHighlightedLine } from "../lib/syntax-highlight";
 
@@ -6,6 +6,7 @@ interface Props {
   onExecute: (sql: string) => void;
   onSwitchProfile: () => void;
   onFocusResult?: () => void;
+  onChange?: (sql: string) => void;
   initialValue?: string;
   visibleRows?: number;
   isActive?: boolean;
@@ -20,6 +21,7 @@ export default function SqlEditor({
   onExecute,
   onSwitchProfile,
   onFocusResult,
+  onChange,
   initialValue = "",
   visibleRows = 10,
   isActive = true,
@@ -31,6 +33,10 @@ export default function SqlEditor({
   const [scrollTop, setScrollTop] = useState(0);
 
   const currentSql = useCallback(() => lines.join("\n"), [lines]);
+
+  useEffect(() => {
+    onChange?.(lines.join("\n"));
+  }, [lines]);
 
   function adjustScroll(newCursor: Cursor) {
     setScrollTop((top) => {

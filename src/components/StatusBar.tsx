@@ -1,18 +1,20 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { Profile } from "../types/config";
-import type { AppMode } from "../types/query";
+import type { AppMode, TabMode } from "../types/query";
+
+type AnyMode = AppMode | TabMode;
 
 interface Props {
   profile: Profile | null;
-  mode: AppMode;
+  mode: AnyMode;
   rowCount?: number;
   duration?: number;
 }
 
-const MODE_HINTS: Partial<Record<AppMode, string>> = {
-  editor: "Ctrl+X:実行  Ctrl+L:クリア  Ctrl+P:プロファイル変更",
-  results: "f:フォーマット切替  c:コピー  e:エディタへ戻る  Ctrl+P:プロファイル変更",
+const MODE_HINTS: Partial<Record<AnyMode, string>> = {
+  editor: "Ctrl+X:実行  Ctrl+L:クリア  Tab:結果へ  Ctrl+T:新規タブ  Ctrl+N/B:タブ切替",
+  results: "Tab:エディタへ  c:コピー  f:フォーマット切替  ↑↓←→:スクロール  Ctrl+T:新規タブ",
   "profile-select": "↑↓:選択  Enter:決定",
 };
 

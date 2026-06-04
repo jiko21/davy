@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
-import { Box, Text, useApp } from "ink";
+import React, { useState, useEffect, useCallback } from "react";
+import { Box, Text, useApp, useInput } from "ink";
 import type { Config, Profile } from "./types/config";
-import type { AppMode, QueryResult } from "./types/query";
+import type { AppMode, Tab } from "./types/query";
+import { newTab } from "./types/query";
 import { loadConfig, saveConfig } from "./lib/config";
 import { connectionManager } from "./lib/connection";
 import { runQuery } from "./lib/sql-executor";
@@ -13,8 +14,10 @@ import ResultView from "./components/ResultView";
 import ErrorDisplay from "./components/ErrorDisplay";
 import StatusBar from "./components/StatusBar";
 import Spinner from "./components/Spinner";
+import TabBar from "./components/TabBar";
 
 const STATUS_BAR_HEIGHT = 3;
+const TAB_BAR_HEIGHT = 1;
 
 interface Props {
   initialConfig: Config | null;
@@ -23,12 +26,14 @@ interface Props {
 export default function App({ initialConfig }: Props) {
   const { exit } = useApp();
   const [config, setConfig] = useState<Config | null>(initialConfig);
-  const [mode, setMode] = useState<AppMode>(initialConfig ? "profile-select" : "setup");
-  const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
-  const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [lastSql, setLastSql] = useState("");
+  const [appMode, setAppMode] = useState<AppMode>(initialConfig ? "profile-select" : "setup");
   const [termRows, setTermRows] = useState(process.stdout.rows ?? 24);
+
+  const [tabs, setTabs] = useState<Tab[]>([]);
+  const [activeTabId, setActiveTabId] = useState(1);
+  const [nextTabId, setNextTabId] = useState(2);
+
+  const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
 
   useEffect(() => {
     const onResize = () => setTermRows(process.stdout.rows ?? 24);
@@ -42,24 +47,62 @@ export default function App({ initialConfig }: Props) {
     return () => { cleanup(); };
   }, [exit]);
 
+  function updateTab(id: number, updates: Partial<Tab>) {
+    setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
+  }
+
+  const addTab = useCallback((profileName: string) => {
+    const tab = newTab(nextTabId, profileName);
+    setTabs((prev) => [...prev, tab]);
+    setActiveTabId(nextTabId);
+    setNextTabId((n) => n + 1);
+  }, [nextTabId]);
+
+  const closeTab = useCallback((id: number) => {
+    if (tabs.length === 1) return;
+    const idx = tabs.findIndex((t) => t.id === id);
+    const newTabs = tabs.filter((t) => t.id !== id);
+    if (activeTabId === id) {
+      setActiveTabId(newTabs[Math.min(idx, newTabs.length - 1)]!.id);
+    }
+    setTabs(newTabs);
+  }, [tabs, activeTabId]);
+
+  const switchToNext = useCallback(() => {
+    const idx = tabs.findIndex((t) => t.id === activeTabId);
+    setActiveTabId(tabs[(idx + 1) % tabs.length]!.id);
+  }, [tabs, activeTabId]);
+
+  const switchToPrev = useCallback(() => {
+    const idx = tabs.findIndex((t) => t.id === activeTabId);
+    setActiveTabId(tabs[(idx - 1 + tabs.length) % tabs.length]!.id);
+  }, [tabs, activeTabId]);
+
+  useInput((input, key) => {
+    if (appMode !== "main") return;
+    if (key.ctrl && input === "t") {
+      addTab(activeTab?.profileName ?? config?.profiles[0]?.name ?? "");
+      return;
+    }
+    if (key.ctrl && input === "w") { closeTab(activeTabId); return; }
+    if (key.ctrl && input === "n") { switchToNext(); return; }
+    if (key.ctrl && input === "b") { switchToPrev(); return; }
+  });
+
   const mainAreaRows = termRows - STATUS_BAR_HEIGHT;
-  const editorRows = Math.max(6, Math.floor(mainAreaRows * 0.6));
-  const bottomRows = Math.max(4, mainAreaRows - editorRows);
-  // ResultView の固定クロム: border上下(2) + タイトル行(1) + marginBottom(1) + FormatSelector(1) + 空白(1) + フッター(1)
+  const editorRows = Math.max(6, Math.floor(mainAreaRows * 0.6) - TAB_BAR_HEIGHT);
+  const bottomRows = Math.max(4, mainAreaRows - editorRows - TAB_BAR_HEIGHT);
   const RESULT_CHROME = 7;
   const resultVisibleRows = Math.max(1, bottomRows - RESULT_CHROME);
-
-  const isMainMode = ["editor", "loading", "results", "error"].includes(mode);
 
   async function handleSetupComplete(newConfig: Config) {
     await saveConfig(newConfig);
     setConfig(newConfig);
-    setMode("profile-select");
+    setAppMode("profile-select");
   }
 
-  async function handleProfileSelect(profile: Profile) {
-    setActiveProfile(profile);
-    setMode("connecting");
+  async function handleInitialProfileSelect(profile: Profile) {
+    setAppMode("connecting");
     try {
       const sql = connectionManager.connect(profile);
       await sql.unsafe("SELECT 1");
@@ -68,14 +111,17 @@ export default function App({ initialConfig }: Props) {
         setConfig(updated);
         await saveConfig(updated);
       }
-      setMode("editor");
+      // 最初のタブを作成
+      const firstTab = newTab(1, profile.name);
+      setTabs([firstTab]);
+      setActiveTabId(1);
+      setAppMode("main");
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-      setMode("error");
+      setAppMode("profile-select");
     }
   }
 
-  async function handleAddProfile(profile: Profile) {
+  async function handleAddConfig(profile: Profile) {
     if (!config) return;
     const updated: Config = {
       ...config,
@@ -83,116 +129,151 @@ export default function App({ initialConfig }: Props) {
     };
     await saveConfig(updated);
     setConfig(updated);
-    setMode("profile-select");
+    setAppMode("profile-select");
+  }
+
+  // タブ内プロファイル切り替え完了
+  async function handleTabProfileSelect(profile: Profile) {
+    if (!activeTab) return;
+    // 接続確認
+    try {
+      const sql = connectionManager.connect(profile);
+      await sql.unsafe("SELECT 1");
+    } catch (err) {
+      // 接続失敗でもプロファイルは更新（次のクエリ実行時にエラーになる）
+    }
+    updateTab(activeTabId, { profileName: profile.name, mode: "editor" });
   }
 
   async function handleExecute(sql: string) {
-    if (!activeProfile) return;
-    setLastSql(sql);
-    setMode("loading");
+    if (!activeTab) return;
+    const profile = config?.profiles.find((p) => p.name === activeTab.profileName);
+    if (!profile) return;
+
+    updateTab(activeTabId, { sql, mode: "loading", focus: "editor" });
     try {
-      const connection = connectionManager.connect(activeProfile);
+      const connection = connectionManager.connect(profile);
       const result = await runQuery(sql, connection);
-      setQueryResult(result);
-      setMode("results");
+      updateTab(activeTabId, { result, mode: "results", focus: "result" });
     } catch (err) {
-      setError(err instanceof Error ? err : new Error(String(err)));
-      setMode("error");
+      updateTab(activeTabId, {
+        error: err instanceof Error ? err : new Error(String(err)),
+        mode: "error",
+        focus: "editor",
+      });
     }
   }
 
-  function handleSwitchProfile() {
-    setMode("profile-select");
-  }
+  const isMainMode = appMode === "main";
+  const tabFocusedOnEditor = !activeTab || activeTab.focus === "editor";
 
   return (
     <Box flexDirection="column">
-      {/* セットアップ / プロファイル選択画面は全体表示 */}
       {!isMainMode && (
         <Box flexDirection="column">
-          {mode === "setup" && (
+          {appMode === "setup" && (
             <SetupWizard onComplete={handleSetupComplete} />
           )}
-          {mode === "profile-select" && config && (
+          {appMode === "profile-select" && config && (
             <ProfileSelector
               profiles={config.profiles}
-              onSelect={handleProfileSelect}
-              onAddNew={() => setMode("profile-form")}
+              onSelect={handleInitialProfileSelect}
+              onAddNew={() => setAppMode("profile-form")}
             />
           )}
-          {mode === "profile-form" && (
+          {appMode === "profile-form" && (
             <ProfileForm
-              onSave={handleAddProfile}
-              onCancel={() => setMode("profile-select")}
+              onSave={handleAddConfig}
+              onCancel={() => setAppMode("profile-select")}
             />
           )}
-          {mode === "connecting" && (
-            <Spinner label={`${activeProfile?.name} に接続中...`} />
+          {appMode === "connecting" && (
+            <Spinner label="接続中..." />
           )}
         </Box>
       )}
 
-      {/* メイン画面: 上部エディタ / 下部結果の分割表示 */}
-      {isMainMode && (
+      {isMainMode && activeTab && (
         <Box flexDirection="column">
-          {/* 上部: SQL エディタ */}
-          <Box height={editorRows}>
-            <SqlEditor
-              onExecute={handleExecute}
-              onSwitchProfile={handleSwitchProfile}
-              onFocusResult={queryResult ? () => setMode("results") : undefined}
-              initialValue={lastSql}
-              visibleRows={editorRows - 4}
-              isActive={mode === "editor"}
-            />
+          <Box height={TAB_BAR_HEIGHT}>
+            <TabBar tabs={tabs} activeTabId={activeTabId} config={config} />
           </Box>
 
-          {/* 下部: 結果エリア */}
-          <Box height={bottomRows} flexDirection="column">
-            {mode === "loading" && (
-              <Box flexGrow={1} alignItems="center" justifyContent="center">
-                <Spinner label="クエリを実行中..." />
+          {/* タブ内プロファイル選択 */}
+          {activeTab.mode === "profile-select" && config && (
+            <Box flexDirection="column" height={editorRows + bottomRows}>
+              <ProfileSelector
+                profiles={config.profiles}
+                onSelect={handleTabProfileSelect}
+                onAddNew={() => setAppMode("profile-form")}
+              />
+            </Box>
+          )}
+
+          {activeTab.mode !== "profile-select" && (
+            <>
+              <Box height={editorRows}>
+                <SqlEditor
+                  key={activeTabId}
+                  onExecute={handleExecute}
+                  onSwitchProfile={() => updateTab(activeTabId, { mode: "profile-select" })}
+                  onFocusResult={
+                    activeTab.result
+                      ? () => updateTab(activeTabId, { focus: "result", mode: "results" })
+                      : undefined
+                  }
+                  onChange={(sql) => updateTab(activeTabId, { sql })}
+                  initialValue={activeTab.sql}
+                  visibleRows={editorRows - 4}
+                  isActive={tabFocusedOnEditor && activeTab.mode !== "loading"}
+                />
               </Box>
-            )}
-            {mode === "editor" && !queryResult && (
-              <Box flexGrow={1} alignItems="center" justifyContent="center">
-                <Text color="gray" dimColor>Ctrl+X でクエリを実行</Text>
+
+              <Box height={bottomRows} flexDirection="column">
+                {activeTab.mode === "loading" && (
+                  <Box flexGrow={1} alignItems="center" justifyContent="center">
+                    <Spinner label="クエリを実行中..." />
+                  </Box>
+                )}
+                {activeTab.mode === "editor" && !activeTab.result && (
+                  <Box flexGrow={1} alignItems="center" justifyContent="center">
+                    <Text color="gray" dimColor>Ctrl+X でクエリを実行</Text>
+                  </Box>
+                )}
+                {(activeTab.mode === "editor" || activeTab.mode === "results") && activeTab.result && (
+                  <ResultView
+                    result={activeTab.result}
+                    onBack={() => updateTab(activeTabId, { focus: "editor", mode: "editor" })}
+                    onSwitchProfile={() => updateTab(activeTabId, { mode: "profile-select" })}
+                    visibleRows={resultVisibleRows}
+                    isActive={!tabFocusedOnEditor}
+                  />
+                )}
+                {activeTab.mode === "error" && activeTab.error && (
+                  <ErrorDisplay
+                    error={activeTab.error}
+                    onBack={() => updateTab(activeTabId, { mode: "editor", focus: "editor" })}
+                  />
+                )}
               </Box>
-            )}
-            {mode === "editor" && queryResult && (
-              <ResultView
-                result={queryResult}
-                onBack={() => {}}
-                onSwitchProfile={handleSwitchProfile}
-                visibleRows={resultVisibleRows}
-                isActive={false}
-              />
-            )}
-            {mode === "results" && queryResult && (
-              <ResultView
-                result={queryResult}
-                onBack={() => setMode("editor")}
-                onSwitchProfile={handleSwitchProfile}
-                visibleRows={resultVisibleRows}
-                isActive={true}
-              />
-            )}
-            {/* editor モードでも結果がある場合は表示（フォーカスなし） */}
-            {mode === "error" && error && (
-              <ErrorDisplay
-                error={error}
-                onBack={() => setMode("editor")}
-              />
-            )}
-          </Box>
+            </>
+          )}
         </Box>
       )}
 
       <StatusBar
-        profile={activeProfile}
-        mode={mode}
-        rowCount={queryResult?.rowCount}
-        duration={queryResult?.duration}
+        profile={
+          isMainMode && activeTab && config
+            ? (config.profiles.find((p) => p.name === activeTab.profileName) ?? null)
+            : null
+        }
+        mode={
+          isMainMode && activeTab
+            ? activeTab.focus === "result" ? "results" : activeTab.mode
+            : appMode as never
+        }
+        rowCount={activeTab?.result?.rowCount}
+        duration={activeTab?.result?.duration}
       />
     </Box>
   );
