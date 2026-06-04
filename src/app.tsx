@@ -6,6 +6,8 @@ import { newTab } from "./types/query";
 import { loadConfig, saveConfig } from "./lib/config";
 import { connectionManager } from "./lib/connection";
 import { runQuery } from "./lib/sql-executor";
+import { fetchSchema } from "./lib/schema-cache";
+import type { SchemaInfo } from "./lib/schema-cache";
 import SetupWizard from "./components/SetupWizard";
 import ProfileSelector from "./components/ProfileSelector";
 import ProfileForm from "./components/ProfileForm";
@@ -29,6 +31,7 @@ export default function App({ initialConfig }: Props) {
   const [appMode, setAppMode] = useState<AppMode>(initialConfig ? "profile-select" : "setup");
   const [termRows, setTermRows] = useState(process.stdout.rows ?? 24);
 
+  const [schemaCache, setSchemaCache] = useState<Record<string, SchemaInfo>>({});
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState(1);
   const [nextTabId, setNextTabId] = useState(2);
@@ -111,6 +114,9 @@ export default function App({ initialConfig }: Props) {
         setConfig(updated);
         await saveConfig(updated);
       }
+      fetchSchema(sql, profile.name).then((schema) => {
+        setSchemaCache((prev) => ({ ...prev, [profile.name]: schema }));
+      }).catch(() => {});
       // 最初のタブを作成
       const firstTab = newTab(1, profile.name);
       setTabs([firstTab]);
@@ -135,10 +141,12 @@ export default function App({ initialConfig }: Props) {
   // タブ内プロファイル切り替え完了
   async function handleTabProfileSelect(profile: Profile) {
     if (!activeTab) return;
-    // 接続確認
     try {
       const sql = connectionManager.connect(profile);
       await sql.unsafe("SELECT 1");
+      fetchSchema(sql, profile.name).then((schema) => {
+        setSchemaCache((prev) => ({ ...prev, [profile.name]: schema }));
+      }).catch(() => {});
     } catch (err) {
       // 接続失敗でもプロファイルは更新（次のクエリ実行時にエラーになる）
     }
@@ -226,6 +234,7 @@ export default function App({ initialConfig }: Props) {
                   initialValue={activeTab.sql}
                   visibleRows={editorRows - 4}
                   isActive={tabFocusedOnEditor && activeTab.mode !== "loading"}
+                  schema={schemaCache[activeTab.profileName] ?? null}
                 />
               </Box>
 

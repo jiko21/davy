@@ -6,7 +6,7 @@ export interface Token {
   color: string;
 }
 
-const KEYWORDS = new Set([
+export const KEYWORDS = new Set([
   "SELECT", "FROM", "WHERE", "AND", "OR", "NOT", "IN", "IS", "NULL", "AS",
   "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "FULL", "CROSS", "ON",
   "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",

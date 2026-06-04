@@ -1,6 +1,8 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { Box, Text, useInput } from "ink";
 import { renderHighlightedLine } from "../lib/syntax-highlight";
+import { getCurrentWord, getSuggestion } from "../lib/autocomplete";
+import type { SchemaInfo } from "../lib/schema-cache";
 
 interface Props {
   onExecute: (sql: string) => void;
@@ -10,6 +12,7 @@ interface Props {
   initialValue?: string;
   visibleRows?: number;
   isActive?: boolean;
+  schema?: SchemaInfo | null;
 }
 
 interface Cursor {
@@ -25,6 +28,7 @@ export default function SqlEditor({
   initialValue = "",
   visibleRows = 10,
   isActive = true,
+  schema = null,
 }: Props) {
   const [lines, setLines] = useState<string[]>(
     initialValue ? initialValue.split("\n") : [""]
@@ -37,6 +41,18 @@ export default function SqlEditor({
   useEffect(() => {
     onChange?.(lines.join("\n"));
   }, [lines]);
+
+  // ghosttext の計算
+  const suggestion = useMemo(() => {
+    const line = lines[cursor.row] ?? "";
+    const word = getCurrentWord(line, cursor.col);
+    if (!word) return null;
+    const s = getSuggestion(word, schema, line);
+    if (!s) return null;
+    // カーソルが行末にないとghostedtextが邪魔なので行末のみ表示
+    if (cursor.col !== line.length) return null;
+    return s.slice(word.length); // まだ入力されていない残り部分
+  }, [lines, cursor, schema]);
 
   function adjustScroll(newCursor: Cursor) {
     setScrollTop((top) => {
@@ -62,8 +78,24 @@ export default function SqlEditor({
       onSwitchProfile();
       return;
     }
-    if (key.tab && onFocusResult) {
-      onFocusResult();
+
+    // Tab: 結果パネルへフォーカス
+    if (key.tab) {
+      onFocusResult?.();
+      return;
+    }
+
+    // 行末で右矢印: ゴーストテキスト補完確定
+    if (key.rightArrow && suggestion && cursor.col === (lines[cursor.row]?.length ?? 0)) {
+      setLines((prev) => {
+        const next = [...prev];
+        const line = next[cursor.row] ?? "";
+        next[cursor.row] = line + suggestion;
+        return next;
+      });
+      const newCursor = { ...cursor, col: cursor.col + suggestion.length };
+      setCursor(newCursor);
+      adjustScroll(newCursor);
       return;
     }
 
@@ -166,28 +198,33 @@ export default function SqlEditor({
   }, { isActive });
 
   const visibleLines = lines.slice(scrollTop, scrollTop + visibleRows);
-
   const borderColor = isActive ? "cyan" : "gray";
 
   return (
     <Box flexDirection="column" borderStyle="round" borderColor={borderColor} paddingX={1} flexGrow={1}>
       <Box marginBottom={1} justifyContent="space-between">
         <Text color={borderColor} bold>SQL エディタ{isActive ? "" : "  [Tab で切替]"}</Text>
-        {isActive && <Text color="gray" dimColor>Ctrl+X:実行  Ctrl+L:クリア  Tab:結果へ  Ctrl+P:プロファイル変更</Text>}
+        {isActive && (
+          <Text color="gray" dimColor>
+            Ctrl+X:実行  Ctrl+L:クリア  {suggestion ? "→:補完  " : ""}Ctrl+P:プロファイル変更
+          </Text>
+        )}
       </Box>
       <Box flexDirection="column" flexGrow={1}>
         {visibleLines.map((line, visIdx) => {
           const rowIdx = scrollTop + visIdx;
+          const isCursorRow = rowIdx === cursor.row;
           return (
             <Box key={rowIdx}>
               <Text color="gray" dimColor>{String(rowIdx + 1).padStart(3, " ")} </Text>
-              {rowIdx === cursor.row ? (
+              {isCursorRow ? (
                 <Text>
                   {renderHighlightedLine(line.slice(0, cursor.col))}
                   <Text backgroundColor="white" color="black">
                     {line[cursor.col] ?? " "}
                   </Text>
                   {renderHighlightedLine(line.slice(cursor.col + 1))}
+                  {suggestion && <Text color="gray" dimColor>{suggestion}</Text>}
                 </Text>
               ) : (
                 renderHighlightedLine(line)
