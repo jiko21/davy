@@ -8,6 +8,7 @@ import { connectionManager } from "./lib/connection";
 import { runQuery } from "./lib/sql-executor";
 import { fetchSchema } from "./lib/schema-cache";
 import type { SchemaInfo } from "./lib/schema-cache";
+import { listTables, describeTable } from "./lib/schema-inspector";
 import SetupWizard from "./components/SetupWizard";
 import ProfileSelector from "./components/ProfileSelector";
 import ProfileForm from "./components/ProfileForm";
@@ -153,15 +154,27 @@ export default function App({ initialConfig }: Props) {
     updateTab(activeTabId, { profileName: profile.name, mode: "editor" });
   }
 
-  async function handleExecute(sql: string) {
+  async function handleExecute(sqlText: string) {
     if (!activeTab) return;
     const profile = config?.profiles.find((p) => p.name === activeTab.profileName);
     if (!profile) return;
 
-    updateTab(activeTabId, { sql, mode: "loading", focus: "editor" });
+    updateTab(activeTabId, { sql: sqlText, mode: "loading", focus: "editor" });
     try {
       const connection = connectionManager.connect(profile);
-      const result = await runQuery(sql, connection);
+
+      // \d コマンドのインターセプト
+      const metaMatch = sqlText.trim().match(/^\\d\s*(\S+)?$/);
+      if (metaMatch) {
+        const tableName = metaMatch[1];
+        const result = tableName
+          ? await describeTable(connection, tableName)
+          : await listTables(connection);
+        updateTab(activeTabId, { result, mode: "results", focus: "result" });
+        return;
+      }
+
+      const result = await runQuery(sqlText, connection);
       updateTab(activeTabId, { result, mode: "results", focus: "result" });
     } catch (err) {
       updateTab(activeTabId, {
