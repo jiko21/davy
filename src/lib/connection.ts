@@ -1,16 +1,17 @@
 import { SQL } from "bun";
 import type { Profile } from "../types/config";
-import { buildConnectionString } from "./config";
+import { buildConnectionString, getProfilePassword } from "./config";
 
 class ConnectionManager {
   private connections = new Map<string, SQL>();
 
-  connect(profile: Profile): SQL {
+  async connect(profile: Profile): Promise<SQL> {
     const existing = this.connections.get(profile.name);
     if (existing) return existing;
 
+    const password = await getProfilePassword(profile.id);
     const sql = new SQL({
-      url: buildConnectionString(profile),
+      url: buildConnectionString(profile, password),
       tls: profile.ssl ? {} : undefined,
     });
     this.connections.set(profile.name, sql);

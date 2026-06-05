@@ -4,6 +4,7 @@ import { type Config, type Profile, isConfig } from "../types/config";
 
 export const CONFIG_DIR = path.join(os.homedir(), ".config", "davy-sql");
 export const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
+const SECRETS_SERVICE = "davy-sql";
 
 export async function loadConfig(): Promise<Config | null> {
   const file = Bun.file(CONFIG_PATH);
@@ -23,8 +24,20 @@ export async function saveConfig(config: Config): Promise<void> {
   await Bun.write(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
-export function buildConnectionString(profile: Profile): string {
-  const encodedPass = encodeURIComponent(profile.password);
+export async function saveProfilePassword(profileId: string, password: string): Promise<void> {
+  await Bun.secrets.set({ service: `${SECRETS_SERVICE}.${profileId}`, name: " ", value: password });
+}
+
+export async function getProfilePassword(profileId: string): Promise<string> {
+  return await Bun.secrets.get({ service: `${SECRETS_SERVICE}.${profileId}`, name: " " }) ?? "";
+}
+
+export async function deleteProfileSecret(profileId: string): Promise<void> {
+  await Bun.secrets.delete({ service: `${SECRETS_SERVICE}.${profileId}`, name: " " }).catch(() => {});
+}
+
+export function buildConnectionString(profile: Profile, password: string): string {
+  const encodedPass = encodeURIComponent(password);
   const encodedUser = encodeURIComponent(profile.username);
   return `postgres://${encodedUser}:${encodedPass}@${profile.host}:${profile.port}/${profile.database}`;
 }

@@ -6,11 +6,11 @@ import { defaultProfile } from "../types/config";
 
 interface Props {
   initial?: Partial<Profile>;
-  onSave: (profile: Profile) => void;
+  onSave: (profile: Profile, password: string) => void;
   onCancel: () => void;
 }
 
-type Field = keyof Profile;
+type Field = Exclude<keyof Profile, "id"> | "password";
 const FIELDS: { key: Field; label: string; secret?: boolean }[] = [
   { key: "name", label: "プロファイル名" },
   { key: "host", label: "ホスト" },
@@ -23,13 +23,14 @@ const FIELDS: { key: Field; label: string; secret?: boolean }[] = [
 
 export default function ProfileForm({ initial, onSave, onCancel }: Props) {
   const base = { ...defaultProfile(), ...initial };
+  const profileId = base.id;
   const [values, setValues] = useState<Record<Field, string>>({
     name: base.name,
     host: base.host,
     port: String(base.port),
     database: base.database,
     username: base.username,
-    password: base.password,
+    password: "",
     ssl: String(base.ssl),
   });
   const [fieldIndex, setFieldIndex] = useState(0);
@@ -47,14 +48,14 @@ export default function ProfileForm({ initial, onSave, onCancel }: Props) {
       if (!values.database.trim()) { setError("データベース名は必須です"); setFieldIndex(3); return; }
       if (isNaN(port)) { setError("ポートは数値で入力してください"); setFieldIndex(2); return; }
       onSave({
+        id: profileId,
         name: values.name.trim(),
         host: values.host || "localhost",
         port,
         database: values.database.trim(),
         username: values.username || "postgres",
-        password: values.password,
         ssl: value === "true",
-      });
+      }, values.password);
     }
   }
 

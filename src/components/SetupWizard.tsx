@@ -4,16 +4,16 @@ import ProfileForm from "./ProfileForm";
 import type { Config, Profile } from "../types/config";
 
 interface Props {
-  onComplete: (config: Config) => void;
+  onComplete: (config: Config, password: string) => void;
 }
 
 export default function SetupWizard({ onComplete }: Props) {
-  function handleSave(profile: Profile) {
+  function handleSave(profile: Profile, password: string) {
     onComplete({
       version: 1,
       activeProfile: profile.name,
       profiles: [profile],
-    });
+    }, password);
   }
 
   return (

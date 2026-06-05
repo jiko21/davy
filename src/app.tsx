@@ -3,7 +3,7 @@ import { Box, Text, useApp, useInput } from "ink";
 import type { Config, Profile } from "./types/config";
 import type { AppMode, Tab } from "./types/query";
 import { newTab } from "./types/query";
-import { loadConfig, saveConfig } from "./lib/config";
+import { loadConfig, saveConfig, saveProfilePassword, deleteProfileSecret, CONFIG_PATH } from "./lib/config";
 import { connectionManager } from "./lib/connection";
 import { runQuery } from "./lib/sql-executor";
 import { fetchSchema } from "./lib/schema-cache";
@@ -99,7 +99,8 @@ export default function App({ initialConfig }: Props) {
   const RESULT_CHROME = 7;
   const resultVisibleRows = Math.max(1, bottomRows - RESULT_CHROME);
 
-  async function handleSetupComplete(newConfig: Config) {
+  async function handleSetupComplete(newConfig: Config, password: string) {
+    await saveProfilePassword(newConfig.profiles[0]!.id, password);
     await saveConfig(newConfig);
     setConfig(newConfig);
     setAppMode("profile-select");
@@ -108,7 +109,7 @@ export default function App({ initialConfig }: Props) {
   async function handleInitialProfileSelect(profile: Profile) {
     setAppMode("connecting");
     try {
-      const sql = connectionManager.connect(profile);
+      const sql = await connectionManager.connect(profile);
       await sql.unsafe("SELECT 1");
       if (config) {
         const updated = { ...config, activeProfile: profile.name };
@@ -128,8 +129,9 @@ export default function App({ initialConfig }: Props) {
     }
   }
 
-  async function handleAddConfig(profile: Profile) {
+  async function handleAddConfig(profile: Profile, password: string) {
     if (!config) return;
+    await saveProfilePassword(profile.id, password);
     const updated: Config = {
       ...config,
       profiles: [...config.profiles.filter((p) => p.name !== profile.name), profile],
@@ -139,11 +141,30 @@ export default function App({ initialConfig }: Props) {
     setAppMode("profile-select");
   }
 
+  async function handleDeleteProfile(profile: Profile) {
+    if (!config) return;
+    await deleteProfileSecret(profile.id);
+    const remaining = config.profiles.filter((p) => p.name !== profile.name);
+    if (remaining.length === 0) {
+      await Bun.$`rm -f ${CONFIG_PATH}`.quiet();
+      setConfig(null);
+      setAppMode("setup");
+      return;
+    }
+    const updated: Config = {
+      ...config,
+      profiles: remaining,
+      activeProfile: config.activeProfile === profile.name ? (remaining[0]?.name ?? "") : config.activeProfile,
+    };
+    await saveConfig(updated);
+    setConfig(updated);
+  }
+
   // タブ内プロファイル切り替え完了
   async function handleTabProfileSelect(profile: Profile) {
     if (!activeTab) return;
     try {
-      const sql = connectionManager.connect(profile);
+      const sql = await connectionManager.connect(profile);
       await sql.unsafe("SELECT 1");
       fetchSchema(sql, profile.name).then((schema) => {
         setSchemaCache((prev) => ({ ...prev, [profile.name]: schema }));
@@ -161,7 +182,7 @@ export default function App({ initialConfig }: Props) {
 
     updateTab(activeTabId, { sql: sqlText, mode: "loading", focus: "editor" });
     try {
-      const connection = connectionManager.connect(profile);
+      const connection = await connectionManager.connect(profile);
 
       // \d コマンドのインターセプト
       const metaMatch = sqlText.trim().match(/^\\d\s*(\S+)?$/);
@@ -200,6 +221,7 @@ export default function App({ initialConfig }: Props) {
               profiles={config.profiles}
               onSelect={handleInitialProfileSelect}
               onAddNew={() => setAppMode("profile-form")}
+              onDelete={handleDeleteProfile}
             />
           )}
           {appMode === "profile-form" && (
@@ -227,6 +249,7 @@ export default function App({ initialConfig }: Props) {
                 profiles={config.profiles}
                 onSelect={handleTabProfileSelect}
                 onAddNew={() => setAppMode("profile-form")}
+                onDelete={handleDeleteProfile}
               />
             </Box>
           )}
