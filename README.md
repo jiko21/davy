@@ -4,6 +4,8 @@ A terminal SQL client for Postgres, built with [Bun](https://bun.com), [Ink](htt
 
 davy runs in your terminal and gives you a multi-tab SQL editor with schema-aware autocomplete, a scrollable result viewer, and one-key export to CSV, JSON, or Markdown — no browser, no Electron.
 
+<video src="https://github.com/jiko21/davy/raw/main/demo.webm" controls muted></video>
+
 ## Features
 
 - **Multiple connection profiles** — save any number of Postgres connections and switch between them
@@ -22,6 +24,31 @@ davy runs in your terminal and gives you a multi-tab SQL editor with schema-awar
 
 ## Installation
 
+### Homebrew (macOS, Apple Silicon)
+
+```bash
+brew tap jiko21/davy
+brew install davy
+```
+
+If `brew install` refuses with an "untrusted tap" error (recent Homebrew versions require trusting third-party taps explicitly), run:
+
+```bash
+brew trust --formula jiko21/davy/davy
+brew install davy
+```
+
+### Prebuilt binary (macOS, Linux, Windows)
+
+Download the archive for your platform from the [latest release](https://github.com/jiko21/davy/releases/latest), extract it, and put the `davy` binary on your `PATH`:
+
+```bash
+tar -xzf davy-<platform>.tar.gz   # e.g. davy-linux-x64.tar.gz (use unzip for davy-windows-x64.zip)
+mv davy-<platform>/davy /usr/local/bin/davy
+```
+
+### From source
+
 ```bash
 git clone https://github.com/jiko21/davy.git
 cd davy
@@ -31,7 +58,8 @@ bun install
 ## Usage
 
 ```bash
-bun start
+davy          # Homebrew or prebuilt binary install
+bun start     # from source
 ```
 
 On first run you'll be walked through creating your first connection profile. After that, davy remembers your profiles and drops you into the profile picker on startup.
