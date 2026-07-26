@@ -4,7 +4,7 @@ A terminal SQL client for Postgres, built with [Bun](https://bun.com), [Ink](htt
 
 davy runs in your terminal and gives you a multi-tab SQL editor with schema-aware autocomplete, a scrollable result viewer, and one-key export to CSV, JSON, or Markdown — no browser, no Electron.
 
-<video src="https://github.com/jiko21/davy/raw/main/demo.webm" controls muted></video>
+![demo](demo.gif)
 
 ## Features
 

@@ -1,4 +1,4 @@
-Output demo.webm
+Output demo.gif
 
 Set Shell "zsh"
 Set FontSize 16
