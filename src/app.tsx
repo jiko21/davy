@@ -100,7 +100,7 @@ export default function App({ initialConfig }: Props) {
   const resultVisibleRows = Math.max(1, bottomRows - RESULT_CHROME);
 
   async function handleSetupComplete(newConfig: Config, password: string) {
-    await saveProfilePassword(newConfig.profiles[0]!.id, password);
+    await saveProfilePassword(newConfig.profiles[0]!.id, password, newConfig.profiles[0]!.savePassword);
     await saveConfig(newConfig);
     setConfig(newConfig);
     setAppMode("profile-select");
@@ -131,7 +131,7 @@ export default function App({ initialConfig }: Props) {
 
   async function handleAddConfig(profile: Profile, password: string) {
     if (!config) return;
-    await saveProfilePassword(profile.id, password);
+    await saveProfilePassword(profile.id, password, profile.savePassword);
     const updated: Config = {
       ...config,
       profiles: [...config.profiles.filter((p) => p.name !== profile.name), profile],

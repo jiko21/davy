@@ -19,6 +19,7 @@ const FIELDS: { key: Field; label: string; secret?: boolean }[] = [
   { key: "username", label: "ユーザー名" },
   { key: "password", label: "パスワード", secret: true },
   { key: "ssl", label: "SSL (true/false)" },
+  { key: "savePassword", label: "パスワードを保存する (true/false)" },
 ];
 
 export default function ProfileForm({ initial, onSave, onCancel }: Props) {
@@ -32,6 +33,7 @@ export default function ProfileForm({ initial, onSave, onCancel }: Props) {
     username: base.username,
     password: "",
     ssl: String(base.ssl),
+    savePassword: String(base.savePassword),
   });
   const [fieldIndex, setFieldIndex] = useState(0);
   const [error, setError] = useState("");
@@ -54,7 +56,8 @@ export default function ProfileForm({ initial, onSave, onCancel }: Props) {
         port,
         database: values.database.trim(),
         username: values.username || "postgres",
-        ssl: value === "true",
+        ssl: values.ssl === "true",
+        savePassword: value === "true",
       }, values.password);
     }
   }

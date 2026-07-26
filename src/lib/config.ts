@@ -5,6 +5,7 @@ import { type Config, type Profile, isConfig } from "../types/config";
 export const CONFIG_DIR = path.join(os.homedir(), ".config", "davy-sql");
 export const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
 const SECRETS_SERVICE = "davy-sql";
+const sessionPasswords = new Map<string, string>();
 
 export async function loadConfig(): Promise<Config | null> {
   const file = Bun.file(CONFIG_PATH);
@@ -24,15 +25,23 @@ export async function saveConfig(config: Config): Promise<void> {
   await Bun.write(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
-export async function saveProfilePassword(profileId: string, password: string): Promise<void> {
+export async function saveProfilePassword(profileId: string, password: string, savePassword = true): Promise<void> {
+  if (!savePassword) {
+    sessionPasswords.set(profileId, password);
+    return;
+  }
+  sessionPasswords.delete(profileId);
   await Bun.secrets.set({ service: `${SECRETS_SERVICE}.${profileId}`, name: " ", value: password });
 }
 
 export async function getProfilePassword(profileId: string): Promise<string> {
+  const sessionPassword = sessionPasswords.get(profileId);
+  if (sessionPassword !== undefined) return sessionPassword;
   return await Bun.secrets.get({ service: `${SECRETS_SERVICE}.${profileId}`, name: " " }) ?? "";
 }
 
 export async function deleteProfileSecret(profileId: string): Promise<void> {
+  sessionPasswords.delete(profileId);
   await Bun.secrets.delete({ service: `${SECRETS_SERVICE}.${profileId}`, name: " " }).catch(() => {});
 }
 
