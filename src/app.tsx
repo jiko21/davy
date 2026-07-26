@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import type { Config, Profile } from "./types/config";
 import type { AppMode, Tab } from "./types/query";
-import { newTab } from "./types/query";
+import { newTab, tabProfileSwitchPatch } from "./types/query";
 import { loadConfig, saveConfig, saveProfilePassword, deleteProfileSecret, CONFIG_PATH } from "./lib/config";
 import { connectionManager } from "./lib/connection";
 import { runQuery } from "./lib/sql-executor";
@@ -163,6 +163,7 @@ export default function App({ initialConfig }: Props) {
   // タブ内プロファイル切り替え完了
   async function handleTabProfileSelect(profile: Profile) {
     if (!activeTab) return;
+    const previousProfileName = activeTab.profileName;
     try {
       const sql = await connectionManager.connect(profile);
       await sql.unsafe("SELECT 1");
@@ -172,7 +173,7 @@ export default function App({ initialConfig }: Props) {
     } catch (err) {
       // 接続失敗でもプロファイルは更新（次のクエリ実行時にエラーになる）
     }
-    updateTab(activeTabId, { profileName: profile.name, mode: "editor" });
+    updateTab(activeTabId, tabProfileSwitchPatch(previousProfileName, profile.name));
   }
 
   async function handleExecute(sqlText: string) {

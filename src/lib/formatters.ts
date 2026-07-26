@@ -5,10 +5,20 @@ function escapeCell(value: unknown): string {
   return str;
 }
 
-function csvQuote(value: unknown): string {
+// 表計算ソフトが数式の開始とみなす先頭文字（= + - @ タブ CR）
+const FORMULA_LEAD = /^[=+\-@\t\r]/;
+// 上記に該当しても、値全体が単なる数値リテラルなら数式にはなり得ないため無害化しない
+const PLAIN_NUMBER = /^[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+
+export function csvQuote(value: unknown): string {
   const str = escapeCell(value);
-  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
-    return `"${str.replace(/"/g, '""')}"`;
+  const escaped = str.replace(/"/g, '""');
+  // CSV インジェクション対策: 数式として解釈される値はアポストロフィを付けて文字列化する
+  if (FORMULA_LEAD.test(str) && !PLAIN_NUMBER.test(str)) {
+    return `"'${escaped}"`;
+  }
+  if (str.includes(",") || str.includes('"') || str.includes("\n") || str.includes("\r")) {
+    return `"${escaped}"`;
   }
   return str;
 }
