@@ -6,6 +6,7 @@ export interface Profile {
   database: string;
   username: string;
   ssl: boolean;
+  savePassword: boolean;
 }
 
 export interface Config {
@@ -24,7 +25,8 @@ export function isProfile(p: unknown): p is Profile {
     typeof obj.port === "number" &&
     typeof obj.database === "string" &&
     typeof obj.username === "string" &&
-    typeof obj.ssl === "boolean"
+    typeof obj.ssl === "boolean" &&
+    typeof obj.savePassword === "boolean"
   );
 }
 
@@ -48,5 +50,6 @@ export function defaultProfile(): Profile {
     database: "",
     username: "postgres",
     ssl: false,
+    savePassword: true,
   };
 }
