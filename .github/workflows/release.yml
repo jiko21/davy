@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: bun-darwin-arm64
+            name: darwin-arm64
+            ext: ""
+            archive: tar.gz
+          - target: bun-linux-x64
+            name: linux-x64
+            ext: ""
+            archive: tar.gz
+          - target: bun-linux-arm64
+            name: linux-arm64
+            ext: ""
+            archive: tar.gz
+          - target: bun-windows-x64
+            name: windows-x64
+            ext: ".exe"
+            archive: zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build ${{ matrix.name }}
+        run: |
+          mkdir -p "dist/davy-${{ matrix.name }}"
+          bun build --compile --target=${{ matrix.target }} index.ts \
+            --outfile "dist/davy-${{ matrix.name }}/davy${{ matrix.ext }}"
+
+      - name: Package (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        working-directory: dist
+        run: tar -czf "davy-${{ matrix.name }}.tar.gz" "davy-${{ matrix.name }}"
+
+      - name: Package (zip)
+        if: matrix.archive == 'zip'
+        working-directory: dist
+        run: zip -r "davy-${{ matrix.name }}.zip" "davy-${{ matrix.name }}"
+
+      - name: Checksum
+        working-directory: dist
+        run: sha256sum "davy-${{ matrix.name }}.${{ matrix.archive }}" > "davy-${{ matrix.name }}.${{ matrix.archive }}.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: davy-${{ matrix.name }}
+          path: |
+            dist/davy-${{ matrix.name }}.${{ matrix.archive }}
+            dist/davy-${{ matrix.name }}.${{ matrix.archive }}.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec cp {} release/ \;
+          ls -la release
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true

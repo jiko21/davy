@@ -6,7 +6,12 @@
   "scripts": {
     "start": "bun index.ts",
     "dev": "bun --hot index.ts",
-    "build": "bun build --compile index.ts --outfile davy"
+    "build": "bun build --compile index.ts --outfile davy",
+    "build:darwin-arm64": "bun build --compile --target=bun-darwin-arm64 index.ts --outfile dist/davy-darwin-arm64/davy",
+    "build:linux-x64": "bun build --compile --target=bun-linux-x64 index.ts --outfile dist/davy-linux-x64/davy",
+    "build:linux-arm64": "bun build --compile --target=bun-linux-arm64 index.ts --outfile dist/davy-linux-arm64/davy",
+    "build:windows-x64": "bun build --compile --target=bun-windows-x64 index.ts --outfile dist/davy-windows-x64/davy.exe",
+    "build:all": "bun run build:darwin-arm64 && bun run build:linux-x64 && bun run build:linux-arm64 && bun run build:windows-x64"
   },
   "devDependencies": {
     "@types/bun": "latest",
